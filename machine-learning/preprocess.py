@@ -1,15 +1,19 @@
 import pandas as pd
+import pickle
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
+from sklearn.preprocessing import MinMaxScaler
 
 class PreprocessPipeline:
     ORDINAL_CATEGORIES = ['Sex', 'RestingECG', 'ExerciseAngina', 'ST_Slope']
     ONE_HOT_ENCODED_CATEGORIES = ['ChestPainType']
     COLUMNS_TO_DROP = ['ChestPainType']
+    CACHE_PATH = 'machine-learning/cache'
 
     def __init__(self, dataset_path):
         self._df = pd.read_csv(dataset_path)
         self._ordinal_encoder = OrdinalEncoder()
         self._one_hot_encoder = OneHotEncoder()
+        self._scaler = MinMaxScaler()
 
     def fit_transform(self):
         self._ordinal_encoder.fit(self._df[self.ORDINAL_CATEGORIES])
@@ -17,7 +21,10 @@ class PreprocessPipeline:
         self._encode_ordinal_features()
         self._encode_one_hot_features()
         self._drop_columns()
-        return self._df
+        X = self._normalize_features()
+        y = self._df['HeartDisease'].values
+        self._save_encoders_and_scaler()
+        return X, y
 
     def _encode_ordinal_features(self):
         self._df[self.ORDINAL_CATEGORIES] = self._ordinal_encoder.transform(
@@ -37,13 +44,20 @@ class PreprocessPipeline:
     def _drop_columns(self):
         self._df = self._df.drop(columns=self.COLUMNS_TO_DROP)
 
-    # TODO: use pickle to save encoders after fit, it will be used on the API and predict pipeline.
-    def _save_encoders(self):
-        pass
+    def _save_encoders_and_scaler(self):
+        pickle.dump(self._ordinal_encoder, open(f'{self.CACHE_PATH}/ordinal_encoder.pkl', 'wb'))
+        pickle.dump(self._one_hot_encoder, open(f'{self.CACHE_PATH}/one_hot_encoder.pkl', 'wb'))
+        pickle.dump(self._scaler, open(f'{self.CACHE_PATH}/scaler.pkl', 'wb'))
+
+    def _normalize_features(self):
+        X = self._df.drop(columns=['HeartDisease']).values
+        self._scaler.fit(X)
+        return self._scaler.transform(X)
 
 
 if __name__ == '__main__':
     DATASET_PATH = 'data/train-heart.csv'
     preprocess_pipeline = PreprocessPipeline(DATASET_PATH)
-    df = preprocess_pipeline.fit_transform()
-    print(df.head())
+    X, y = preprocess_pipeline.fit_transform()
+    print(X.shape)
+    print(y.shape)
